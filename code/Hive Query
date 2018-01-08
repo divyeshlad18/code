@@ -1,0 +1,392 @@
+# Hive Query 
+
+# Dataset Final_airlines, routes.data and airports_mod.dat
+
+# Create database,tables and load data
+
+-- Create DATABASE IF NOT EXISTS airports;
+
+-- USE airports;
+
+Create Table airports_mod(airportid int,
+name_of_airport string,
+city string, 
+Country string, 
+IATA_FAA string,
+ICAO string, 
+Latitiude double, Longitude double,
+Altitude int, 
+Timezone float, 
+DST string, 
+Tz string) 
+row format delimited
+fields terminated by ',';
+
+load data inpath 'hdfs:///user/airports_mod.dat' into table airports_mod;
+
+Create Table routes(airline string,
+airline_id smallint,
+source_airport string,
+source_airport_id int,
+destination_airport string,
+destination_airport_id int,
+codeshare string,
+stops tinyint,
+equipment string) row format delimited fields terminated by ',';
+
+load data inpath 'hdfs:///user/All dataset/routes.dat' into table routes;
+
+Create Table Airlines(airline_id smallint,
+name string,
+Alias string,
+IATA string,
+ICAO string,
+callsign string,
+country string,
+active string)
+row format delimited
+fields terminated by ',';
+
+load data inpath 'hdfs:///user/All dataset/Final_airlines' into table Airlines; 
+
+  
+#A. Find list of Airports operating in the Country India.
+insert overwrite directory '/user/Output_hive/Airline/output1' select name_of_airport,city from airports_mod where country == 'India';
+
+#B. Find the list of Airlines having zero stops.
+insert overwrite directory '/user/Output_hive/Airline/output2' select a.name, r.stops from airlines a join routes r on a.airline_id = r.airline_id;
+
+#C. List of Airlines operating with code share.  
+insert overwrite directory '/user/Output_hive/Airline/output3' select a.name, r.codeshare from airlines a join routes r on a.airline_id = r.airline_id where r.codeshare == 'Y';
+
+#D. Which country (or) territory  having highest Airports.
+insert overwrite directory '/user/Output_hive/Airline/output4' select country,count(country) as ct from airports_mod group by country order by ct desc;
+
+#E. Find the list of Active Airlines  in United state.
+insert overwrite directory '/user/Output_hive/Airline/output5' select name,country,active from airlines where country == "United States" and active == 'Y'; 
+
+#F. List the city representing country having maximum number of airports.
+insert overwrite directory '/user/Output_hive/Airline/output6' select country,city,count(airportid) as aid from airports_mod group by country,city order by aid desc ; 
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# StackOverFlow with dataset files as comments,posts,posttypes,users
+
+# Create Database and External table
+
+-- Create database StackOverflow;
+
+-- USE StackOverflow;
+
+Create external table
+comments(id int,
+userid int)
+row format delimited
+fields terminated by ',' location '/user/comments';
+
+create external table posts (
+id int,
+post_type smallint,
+creationdate timestamp,
+score int,
+viewcount int,
+owneruserid smallint,
+title string,
+answercount int,
+commentcount smallint)        
+row format delimited
+fields terminated by ',' location '/user/posts';
+
+create external table posttypes (
+id int,
+name string)
+row format delimited
+fields terminated by ',' location '/user/posttypes';
+
+create external table users (
+id int,
+reputation int,
+displayname string,
+loc string,
+age tinyint  
+)
+row format delimited
+fields terminated by ',' location '/user/users';
+
+#A. Find the display name and no. of posts created by the user who has got maximum reputation.
+select displayname,reputation from users group by displayname,reputation order by reputation desc; 
+
+#B. Find the average age of users on the Stack Overflow site.
+select avg(age) from users;
+
+#C. Find the display name of user who posted the oldest post on Stack Overflow (in terms of date).
+select u.displayname,p.creationdate from users u join posts p on (u.id = p.owneruserid) order by p.creationdate;
+
+#D. Find the display name and no. of comments done by the user who has got maximum reputation.
+select u.displayname,p.commentcount,max(reputation) as rep from users u join posts p on u.id = p.owneruserid join comments c on c.userid = p.owneruserid group by u.displayname,p.commentcount order by rep desc;
+
+#E(i). Find the display name of user who has created maximum no. of posts on Stack Overflow.
+select u.displayname,p.owneruserid,count(*) as cid from users u join posts p on p.owneruserid = u.id group by u.displayname,p.owneruserid order by cid desc;
+
+(ii) Find the display name of user who has commented maximum no. of posts on Stack Overflow.
+select u.displayname,p.commentcount from users u join posts p on p.owneruserid = u.id group by u.displayname,p.commentcount order by p.commentcount desc;
+
+#F. Find the owner name and id of user whose post has got maximum no. of view counts so far.
+select u.displayname,u.id,p.viewcount from users u join posts p on u.id = p.owneruserid order by p.viewcount desc ;  
+
+#G(i). Find the title and owner name of the post which has maximum no. of Answer Count.
+select u.displayname,p.title,p.answercount from users u join posts p on u.id = p.owneruserid order by p.answercount desc ; 
+
+(ii) Find the title and owner name of post who has got maximum no. of Comment count. 
+select u.displayname,p.title,p.commentcount from users u join posts p on u.id = p.owneruserid where p.title != '' order by p.commentcount desc ;  
+
+#H. Find the location which has maximum no of Stack Overflow users
+select loc,count(*) as c from users group by loc order by c desc;
+
+#I. Find the total no. of answers, posts, comments created by Indian users.
+select count(p.post_type) from posts p join users u on u.id = p.owneruserid where p.posttype = 2 and u.loc == 'India';
+select count(p.id) from posts p join users u on u.id = p.owneruserid where u.loc == 'India';
+select count(*) from comments c join users u on u.id = c.userid where u.loc == 'India';
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Avro format data and updating schema 
+
+1. Import data from mysql to HDFS using Sqoop and specifiying avro data format. 
+sqoop import \
+--connect jdbc:mysql://localhost/loudacre \
+--username training \
+--password training \
+--table accounts \
+--target-dir /loudacre/accounts_avro \
+--as-avrodatafile \
+--null-non-string '\\N'
+
+2. Copy sqoop_import_accounts.avsc file created after running sqoop query to hdfs.
+hdfs dfs -copyFromLocal ./sqoop_import_accounts.avsc /loudacre/accounts_avro/
+
+3. Create external table in hive providing schema path where you have copied sqoop_import_accounts.avsc and location of directory where accounts data were stored.
+create external table accounts_avro stored as avro location '/loudacre/accounts_avro' tblproperties('avro.schema.url' = '/loudacre/accounts_avro/sqoop_import_accounts.avsc');
+
+4. Evolve Avro Schema to add new columns bank_name and loan_amount(Note: remember to add deafult value in each column)
+
+{
+  "type" : "record",
+  "name" : "sqoop_import_accounts",
+  "doc" : "Sqoop import of accounts",
+  "fields" : [ {
+    "name" : "acct_num",
+    "type" : [ "int", "null" ],
+    "columnName" : "acct_num",
+    "sqlType" : "4"
+  }, {
+    "name" : "acct_create_dt",
+    "type" : [ "long", "null" ],
+    "columnName" : "acct_create_dt",
+    "sqlType" : "93"
+  }, {
+    "name" : "acct_close_dt",
+    "type" : [ "long", "null" ],
+    "columnName" : "acct_close_dt",
+    "sqlType" : "93"
+  }, {
+    "name" : "first_name",
+    "type" : [ "string", "null" ],
+    "columnName" : "first_name",
+    "sqlType" : "12"
+  }, {
+    "name" : "last_name",
+    "type" : [ "string", "null" ],
+    "columnName" : "last_name",
+    "sqlType" : "12"
+  }, {
+    "name" : "address",
+    "type" : [ "string", "null" ],
+    "columnName" : "address",
+    "sqlType" : "12"
+  }, {
+    "name" : "city",
+    "type" : [ "string", "null" ],
+    "columnName" : "city",
+    "sqlType" : "12"
+  }, {
+    "name" : "state",
+    "type" : [ "string", "null" ],
+    "columnName" : "state",
+    "sqlType" : "12"
+  }, {
+    "name" : "zipcode",
+    "type" : [ "string", "null" ],
+    "columnName" : "zipcode",
+    "sqlType" : "12"
+  }, {
+    "name" : "phone_number",
+    "type" : [ "string", "null" ],
+    "columnName" : "phone_number",
+    "sqlType" : "12"
+  }, {
+    "name" : "created",
+    "type" : [ "long", "null" ],
+    "columnName" : "created",
+    "sqlType" : "93"
+  }, {
+    "name" : "modified",
+    "type" : [ "long", "null" ],
+    "columnName" : "modified",
+    "sqlType" : "93"
+  },{
+    "name" : "bank",
+    "type" : [ "string", "null" ],
+    "columnName" : "bank_name",
+	"default" : "DenaBank",
+    "sqlType" : "12"
+  },{
+    "name" : "bank_loan",
+    "type" : [ "string", "null" ],
+    "columnName" : "loan_amount",
+	"default" : "null",
+    "sqlType" : "12"
+  }],
+  "tableName" : "accounts"
+}
+
+5. place the file where sqoop_import_accounts.avsc was placed
+hdfs dfs -put -f ./Desktop/sqoop_import_accounts.avsc /loudacre/accounts_avro/
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Make a parquet table accounts_parquet using accounts_avro table
+1.Use CTAS(create table as table_name select) to create table 
+create table accounts_parquet stored as parquet location '/loudacre/accounts_parquet' as select * from accounts_avro;
+
+2.Alter Table to make it external
+alter table accounts_parquet set tblproperties('external' = 'true');
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Dynamic Partiton
+create external table accounts_avro_by_areacode(acct_num string,first_name string, last_name string, phone_number string) partitioned by(areacode string) row format delimited fields terminated by ',' location '/loudacre/accounts_by_areacode';
+
+insert into table accounts_avro_by_areacode partition(areacode) select acct_num,first_name,last_name,substr(phone,1,3) as areacode from accounts_avro;
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Static partition
+
+(URL string, Name/Alias array<string,string>, Appearances int, Current string, Gender string, Probationary_Introl string, Full/Reserve_Avengers_Intro string, Year int, Years_since_joining int, Honorary string,Death1 string,Return1 string, Death2 string,Return2 string,Death3 string,Return3 string, Death4 string, Return4 string, Death5 string, Return5 string,Notes string)
+
+create external table avengers(URL string, 
+Name_Alias array<string>, 
+Appearances int, 
+curr string, 
+Gender string, 
+Probationary_Introl string, 
+Full_Reserve_Avengers_Intro string, 
+Year int, 
+Years_since_joining int, 
+Honorary string,
+Death1 string,
+Return1 string, 
+Death2 string,
+Return2 string,
+Death3 string,
+Return3 string, 
+Death4 string, 
+Return4 string, 
+Death5 string, 
+Return5 string,
+Notes string) 
+row format delimited 
+fields terminated by ',' 
+collection items terminated by '\"';
+
+alter table avengers set location '/user/hduser/avengers/avenger';
+
+#Dynamic Partition
+create external table avengers_by_gender(url string,name array<string>,appearances int, curr string, experience int) partitioned by(gender string) row format delimited fields terminated by ',';
+
+set hive.exec.dynamic.partition.mode=nonstrict;
+set hive.exec.dynamic.partition=true;
+insert into table avengers_by_gender partition(gender) select substr(url,8,16),name_alias,appearances,curr,years_since_joining,gender from avengers;
+
+
+#Static Partition 
+create extrenal table avengers_gender(url string,name array<string>,appearances int, curr string, experience int) partitioned by(gender string) row format delimited fields terminated by ',';
+
+alter table avengers_gender add partition(gender ='Male')
+
+load data inpath '/user/hduser/avengers_by_gender/gender=MALE/000000_0' into table avengers_gender partition(gender = 'Male');
+
+#Bucketing
+create external table accounts_by_state_city(acct_num string,first_name string, last_name string, phone_number string,city string) partitioned by(state string) clustered by (city) into 20 buckets row format delimited fields terminated by ',';
+
+insert into table accounts_by_state_city partition(state) select acct_num,first_name,last_name,phone_number,city,state from accounts;
+
+
+#Hive UDF
+
+# Youtube data
+
+----------------------Sample data from youtube dataset----------------------------------------------------------------------------------------------------------------------------------------------------
+
+QuRYeRnAuXM	EvilSquirrelPictures	1135	Pets & Animals	252	1075	4.96	46	86	gFa1YMEJFag	nRcovJn9xHg	3TYqkBJ9YRk	rSJ8QZWBegU	0TZqX5MbXMA	UEvVksP91kg	ZTopArY7Nbg	0RViGi2Rne8	HT_QlOJbDpg	YZev1imoxX8	8qQrrfUTmh0	zQ83d_D2MGs	u6_DQQjLsAw	73Wz9CQFDtE
+3TYqkBJ9YRk	hggh22	1135	Comedy	169	228	5	5	3	QuRYeRnAuXM	gFa1YMEJFag	UEvVksP91kg	rSJ8QZWBegU	nRcovJn9xHg	sVkuOk4jmCo	ZTopArY7Nbg	HT_QlOJbDpg	0RViGi2Rne8	ShhClb6J-NA	g9e1alirMhc	YZev1imoxX8	I4yKEK9o8gA	zQ83d_D2MGs	1GKaVzNDbuI	yuZhwV24PmM	DomumdGQSg8	hiSmlmXp-aU	pFUYi7dp1WU	2l6vwAIAqNU
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Dataset Description
+
+Column1: Video id of 11 characters.
+Column2: uploader of the video of string data type.
+Column3: Interval between day of establishment of Youtube and the date of uploading of the video of integer data type.
+Column4: Category of the video of String data type.
+Column5: Length of the video of integer data type.
+Column6: Number of views for the video of integer data type.
+Column7: Rating on the video of float data type.
+Column8: Number of ratings given on the video.
+Column9: Number of comments on the videos in integer data type.
+Column10: Related video ids with the uploaded video.
+
+# As you can see the data in column is tab('\t') delimited but their are multiple entries for column10. 
+-One soluton can be to pass regular expression using row format delimited 'org.apache.hadoop.hive.serde2.RegexSerDe' with SERDEPROPERTIES ("regular-expression...")
+-Second,write python script to store columns after column10 in array. And, use TRANSFORM to create a table.    
+
+1. Create external table with all the columns in the dataset and add additional columns for column no. 10.
+create external table youtube(video_id string, uploader string, interval_of_uploading int, category string, length int, no_of_views int, rating float, no_of_ratings int, no_of_comments int, col1 string, col2 string, col3 string, col4 string, col5 string, col6 string, col7 string,col8 string,col9 string,col10 string,col11 string,col12 string,col13 string,col14 string,col15 string,col16 string,col17 string,col18 string,col19 string,col20 string) row format delimited fields terminated by '\t' location '/user/hduser/hive';
+
+
+2. Create Python script 
+
+#hiveudf.py
+
+'''
+to pass column9 and other columns after it and split them on '\t' to make a list of all columns.
+Pop column 9 out of list because it will act as key while joining two tables.
+'''
+
+import sys
+
+for line in sys.stdin:
+    sentence_split = line.split("\t")
+    sentence_split_first = sentence_split.pop(0) #Pop column9 it will act as key
+    print("{0}\t{1}".format(sentence_split_first,sentence_split)) #Print the columns with '\t' so that hive can distingush between column. 
+
+
+3. Add resources
+add file /home/omnamahshivay/Desktop/hiveudf.py;
+
+4. Pass the arguments and apply Transform.
+create table related_video_ids as select transform(no_of_comments,col1,col2,col3,col4,col5,col6,col7,col8,col9,col10,col11,col12,col13,col14,col15,col16,col17,col18,col19,col20) using 'python /home/omnamahshivay/
+Desktop/hiveudf.py' as (no_of_comments int,related_video_ids array<string>) from youtube limit 10;
+
+5. Remove (col1.....col20) from youtube.
+alter table youtube replace columns(video_id string, uploader string, interval_of_uploading int, category string, length int, no_of_views int, rating float, no_of_ratings int, no_of_comments int);
+
+6. Join Youtube and related_video_ids on  no_of_comments(column no.9)
+create table youtube_clean as select y.video_id, y.uploader, y.interval_of_uploading, y.category, y.length, y.no_of_views, y.rating, y.no_of_ratings, y.no_of_comments, r.related_video_ids from youtube y join related_video_ids r on (y.no_of_comments = r.no_of_comments);
+
+
+
+ 
+
